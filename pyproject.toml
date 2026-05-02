@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ioc2microzig"
+version = "0.2.0"
+description = "Generate MicroZig project skeletons and board initialization from STM32CubeMX .ioc files."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+    { name = "ioc2microzig contributors" },
+]
+keywords = ["stm32", "cubemx", "microzig", "zig", "embedded"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Embedded Systems",
+]
+dependencies = [
+    "Jinja2>=3.1",
+]
+
+[project.scripts]
+ioc2microzig = "ioc2microzig.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ioc2microzig*"]
+
+[tool.setuptools.package-data]
+ioc2microzig = ["backends/templates/**/*.j2"]

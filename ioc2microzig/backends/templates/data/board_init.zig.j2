@@ -1,0 +1,15 @@
+const generated = @import("peripherals.zig");
+// USER CODE BEGIN board_init.imports
+// USER CODE END board_init.imports
+
+// USER CODE BEGIN board_init.decls
+// USER CODE END board_init.decls
+
+pub const pins = struct {};
+pub const pwm = struct {};
+
+pub fn init() !void {
+    try generated.initAll();
+    // USER CODE BEGIN board_init.init
+    // USER CODE END board_init.init
+}

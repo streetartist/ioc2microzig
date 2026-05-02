@@ -1,0 +1,77 @@
+const microzig = @import("microzig");
+const stm32 = microzig.hal;
+const generated = @import("peripherals.zig");
+// USER CODE BEGIN board_init.imports
+// USER CODE END board_init.imports
+
+// USER CODE BEGIN board_init.decls
+// USER CODE END board_init.decls
+
+pub const pins = struct {};
+pub const pwm = struct {};
+
+pub fn init() !void {
+    try initClocks();
+    initGpio();
+    initTimers();
+    try initUarts();
+    try generated.initAll();
+    // USER CODE BEGIN board_init.init
+    // USER CODE END board_init.init
+}
+
+pub const gpio_config = if (comptime @hasDecl(stm32, "pins") and @hasDecl(stm32.pins, "GlobalConfiguration"))
+    stm32.pins.GlobalConfiguration{
+{% for port in ports %}
+        .{{ port.name }} = .{
+{% for pin in port.pins %}
+            .{{ pin.field }} = .{ .name = "{{ pin.alias }}", .mode = {% if pin.mode.kind == "output" %}.{ .output = .{ .resistor = .{{ pin.mode.pull }}, .o_type = .{{ pin.mode.output_type }}, .o_speed = .{{ pin.mode.speed }} } }{% elif pin.mode.kind == "input" %}.{ .input = .{ .resistor = .{{ pin.mode.pull }} } }{% elif pin.mode.kind == "analog" %}.{ .analog = .{ .resistor = .{{ pin.mode.pull }} } }{% else %}.{ .alternate_function = .{ .afr = .{{ pin.mode.alternate }}, .resistor = .{{ pin.mode.pull }}, .o_type = .{{ pin.mode.output_type }}, .o_speed = .{{ pin.mode.speed }} } }{% endif %} },
+{% endfor %}
+        },
+{% else %}
+        // No GPIO pins selected.
+{% endfor %}
+    }
+else
+    struct {}{};
+
+fn initClocks() !void {
+    if (comptime @hasDecl(stm32, "rcc") and @hasDecl(stm32.rcc, "apply")) {
+        stm32.rcc.apply();
+    }
+    // pins.GlobalConfiguration.apply() usually enables GPIO port clocks.
+    // Still review peripheral clocks explicitly:
+{{ clock_todos }}
+    // CubeMX RCC summary:
+{{ rcc_comments }}
+    // USER CODE BEGIN board_init.initClocks
+    // USER CODE END board_init.initClocks
+}
+
+fn initGpio() void {
+    if (comptime @hasDecl(stm32, "pins") and @hasDecl(stm32.pins, "GlobalConfiguration")) {
+        const applied_pins = gpio_config.apply();
+        _ = applied_pins;
+    } else {
+        @compileLog("This MicroZig STM32 target has no hal.pins.GlobalConfiguration; use --gpio-api data for a portable skeleton.");
+    }
+    // USER CODE BEGIN board_init.initGpio
+    // USER CODE END board_init.initGpio
+}
+
+fn initTimers() void {
+    // Timer/PWM conversion for this STM32 family is not implemented yet.
+    // USER CODE BEGIN board_init.initTimers
+    // USER CODE END board_init.initTimers
+}
+
+fn initUarts() !void {
+    // MicroZig UART v3 setup generated from CubeMX USART/UART components.
+{% for uart in uarts %}
+    _ = stm32.uart.Uart(.{{ uart.instance }}).init(.{});
+{% else %}
+    // No UART setup inferred.
+{% endfor %}
+    // USER CODE BEGIN board_init.initUarts
+    // USER CODE END board_init.initUarts
+}

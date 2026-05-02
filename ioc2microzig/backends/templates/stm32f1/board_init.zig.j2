@@ -1,0 +1,140 @@
+const microzig = @import("microzig");
+const stm32 = microzig.hal;
+const generated = @import("peripherals.zig");
+// USER CODE BEGIN board_init.imports
+// USER CODE END board_init.imports
+
+// USER CODE BEGIN board_init.decls
+// USER CODE END board_init.decls
+
+pub fn init() !void {
+    try initClocks();
+    initGpio();
+    initTimers();
+    try initUarts();
+    try generated.initAll();
+    // USER CODE BEGIN board_init.init
+    // USER CODE END board_init.init
+}
+
+const rcc = stm32.rcc;
+const gpio = stm32.gpio;
+const GPTimer = stm32.timer.GPTimer;
+
+pub const pins = struct {
+{% for pin in pins %}
+    pub const {{ pin.alias }} = gpio.Pin.from_port(.{{ pin.port }}, {{ pin.number }});
+{% else %}
+    // No physical GPIO aliases.
+{% endfor %}
+};
+
+{% for timer in timers %}
+const {{ timer.alias }} = GPTimer.init(.{{ timer.instance }}).into_pwm_mode();
+{% else %}
+// No generated timer aliases.
+{% endfor %}
+{% for uart in uarts %}
+const {{ uart.alias }} = stm32.uart.UART.init(.{{ uart.instance }});
+{% else %}
+// No generated UART aliases.
+{% endfor %}
+
+pub const pwm = struct {
+{% for output in pwm_outputs %}
+    pub const {{ output.period_const }}: u16 = {{ output.period }};
+    pub fn set_{{ output.suffix }}_duty(value: u16) void {
+        {{ output.timer_alias }}.set_duty({{ output.channel }}, value);
+    }
+    pub fn enable_{{ output.suffix }}(enabled: bool) void {
+        {{ output.timer_alias }}.set_channel({{ output.channel }}, enabled);
+    }
+{% else %}
+    // No generated PWM outputs.
+{% endfor %}
+};
+
+fn initClocks() !void {
+{% if rcc.fields or rcc.flags %}
+    _ = try rcc.apply(.{
+{% for field in rcc.fields %}
+        .{{ field.name }} = .{{ field.value }},
+{% endfor %}
+{% if rcc.flags %}
+        .flags = .{
+{% for flag in rcc.flags %}
+            .{{ flag.name }} = {{ flag.value }},
+{% endfor %}
+        },
+{% endif %}
+    });
+{% else %}
+    // No supported CubeMX RCC clock tree entries were inferred.
+{% endif %}
+{% for port in gpio_ports %}
+    rcc.enable_clock(.{{ port }});
+{% endfor %}
+{% if enable_afio %}
+    rcc.enable_clock(.AFIO);
+{% endif %}
+{% for peripheral in peripheral_clocks %}
+    rcc.enable_clock(.{{ peripheral }});
+{% endfor %}
+{% if not gpio_ports and not enable_afio and not peripheral_clocks %}
+    // No GPIO/peripheral clocks inferred.
+{% endif %}
+    // CubeMX RCC summary:
+{{ rcc_comments }}
+    // USER CODE BEGIN board_init.initClocks
+    // USER CODE END board_init.initClocks
+}
+
+fn initGpio() void {
+    // STM32F1 MicroZig GPIO setup generated from CubeMX pins.
+{% for pin in pins %}
+{% if pin.setup.kind == "output" %}
+    pins.{{ pin.alias }}.set_output_mode(.{{ pin.setup.mode }}, .{{ pin.setup.speed }}); // {{ pin.name }}: {{ pin.signal }}
+{% elif pin.setup.kind == "input" %}
+    pins.{{ pin.alias }}.set_input_mode(.{{ pin.setup.mode }});{% if pin.setup.pull %} pins.{{ pin.alias }}.set_pull(.{{ pin.setup.pull }});{% endif %} // {{ pin.name }}: {{ pin.signal }}
+{% else %}
+    // TODO configure {{ pin.name }} as {{ pin.signal }}.
+{% endif %}
+{% else %}
+    // No GPIO pins selected.
+{% endfor %}
+    // USER CODE BEGIN board_init.initGpio
+    // USER CODE END board_init.initGpio
+}
+
+fn initTimers() void {
+    // STM32F1 MicroZig timer setup generated from CubeMX TIM components.
+{% for timer in timers %}
+    {{ timer.alias }}.configure(.{
+        .prescaler = {{ timer.prescaler }},
+        .auto_reload = {{ timer.period }},
+        .counter_mode = .{ .up = {} },
+    });
+{% for channel in timer.channels %}
+    {{ timer.alias }}.configure_channel({{ channel.index }}, .{ .fast_mode = true });
+    {{ timer.alias }}.set_channel({{ channel.index }}, true);
+{% endfor %}
+    {{ timer.alias }}.force_update();
+{% else %}
+    // No timer setup inferred.
+{% endfor %}
+    // USER CODE BEGIN board_init.initTimers
+    // USER CODE END board_init.initTimers
+}
+
+fn initUarts() !void {
+    // STM32F1 MicroZig UART setup generated from CubeMX USART/UART components.
+{% for uart in uarts %}
+    try {{ uart.alias }}.apply_runtime(.{
+        .clock_speed = rcc.get_clock(.{{ uart.instance }}),
+    });
+{% else %}
+    // No UART setup inferred.
+{% endfor %}
+    // USER CODE BEGIN board_init.initUarts
+    // USER CODE END board_init.initUarts
+}

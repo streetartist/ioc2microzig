@@ -1,0 +1,105 @@
+const microzig = @import("microzig");
+const generated = @import("peripherals.zig");
+const chip = microzig.chip;
+const peripherals = chip.peripherals;
+const RCC = peripherals.RCC;
+// USER CODE BEGIN board_init.imports
+// USER CODE END board_init.imports
+
+// USER CODE BEGIN board_init.decls
+// USER CODE END board_init.decls
+
+pub const pins = struct {};
+pub const pwm = struct {};
+
+pub fn init() !void {
+    initClocks();
+    initGpio();
+    initTimers();
+    try initUarts();
+    try generated.initAll();
+    // USER CODE BEGIN board_init.init
+    // USER CODE END board_init.init
+}
+
+fn initClocks() void {
+    // STM32F4 HAL currently keeps most chips on reset/default clocks.
+    // CubeMX RCC summary:
+{{ rcc_comments }}
+    // USER CODE BEGIN board_init.initClocks
+    // USER CODE END board_init.initClocks
+}
+
+fn initGpio() void {
+    // STM32F4 register-level GPIO setup generated from CubeMX pins.
+{% for pin in pins %}
+{% if pin.setup.kind == "mode" %}
+    enableGpioPort(.{{ pin.port }});
+    setGpioMode(peripherals.{{ pin.port }}, {{ pin.number }}, .{{ pin.setup.mode }}); // {{ pin.name }}: {{ pin.signal }}
+{% elif pin.setup.kind == "alternate" %}
+    enableGpioPort(.{{ pin.port }});
+    setGpioMode(peripherals.{{ pin.port }}, {{ pin.number }}, .alternate);
+    setGpioAlternate(peripherals.{{ pin.port }}, {{ pin.number }}, {{ pin.setup.alternate }}); // {{ pin.name }}: {{ pin.signal }}
+{% else %}
+    // TODO configure {{ pin.name }} for {{ pin.signal }}.
+{% endif %}
+{% else %}
+    // No GPIO pins selected.
+{% endfor %}
+    // USER CODE BEGIN board_init.initGpio
+    // USER CODE END board_init.initGpio
+}
+
+const GpioMode = enum(u2) {
+    input = 0b00,
+    output = 0b01,
+    alternate = 0b10,
+    analog = 0b11,
+};
+
+const GpioPort = enum {
+    GPIOA,
+    GPIOB,
+    GPIOC,
+    GPIOD,
+    GPIOE,
+    GPIOF,
+    GPIOG,
+    GPIOH,
+    GPIOI,
+    GPIOJ,
+    GPIOK,
+};
+
+fn enableGpioPort(comptime port: GpioPort) void {
+    const field = @tagName(port) ++ "EN";
+    RCC.AHB1ENR.modify_one(field, 1);
+}
+
+fn setGpioMode(port: anytype, comptime pin: u4, mode: GpioMode) void {
+    const shift: u5 = @as(u5, pin) * 2;
+    const mask: u32 = @as(u32, 0b11) << shift;
+    port.MODER.raw = (port.MODER.raw & ~mask) | (@as(u32, @intFromEnum(mode)) << shift);
+}
+
+fn setGpioAlternate(port: anytype, comptime pin: u4, comptime af: u4) void {
+    const shift: u5 = @as(u5, pin % 8) * 4;
+    const mask: u32 = @as(u32, 0b1111) << shift;
+    if (pin < 8) {
+        port.AFR[0].raw = (port.AFR[0].raw & ~mask) | (@as(u32, af) << shift);
+    } else {
+        port.AFR[1].raw = (port.AFR[1].raw & ~mask) | (@as(u32, af) << shift);
+    }
+}
+
+fn initTimers() void {
+    // Timer/PWM conversion for this STM32F4 HAL backend is not implemented yet.
+    // USER CODE BEGIN board_init.initTimers
+    // USER CODE END board_init.initTimers
+}
+
+fn initUarts() !void {
+    // UART conversion for this STM32F4 HAL backend is not implemented yet.
+    // USER CODE BEGIN board_init.initUarts
+    // USER CODE END board_init.initUarts
+}
