@@ -1,320 +1,210 @@
-# ioc2microzig
+<p align="right">
+  <strong>English</strong> | <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-把 STM32CubeMX 的 `.ioc` 文件转换成 MicroZig 项目骨架，并尽量生成可用的初始化代码。
+<p align="center">
+  <img src="logo.png" alt="ioc2microzig logo" width="160">
+</p>
 
-## 安装
+<h1 align="center">ioc2microzig</h1>
+
+<p align="center">
+  Generate MicroZig project skeletons and board initialization code from STM32CubeMX <code>.ioc</code> files.
+</p>
+
+<p align="center">
+  <a href="https://github.com/streetartist/ioc2microzig/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/streetartist/ioc2microzig/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-blue">
+  <img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-orange">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
+</p>
+
+`ioc2microzig` reads the hardware configuration you already maintain in STM32CubeMX and turns it into a MicroZig-oriented Zig firmware project. It preserves CubeMX metadata, creates stable Zig aliases, generates board initialization where the target family is supported, and leaves regeneration-safe `USER CODE` regions for the parts you still want to own by hand.
+
+It is not a CubeMX C-to-Zig transpiler. It works from the `.ioc` source of truth.
+
+## Contents
+
+- [Why](#why)
+- [Features](#features)
+- [Status](#status)
+- [Install](#install)
+- [Quick Start](#quick-start)
+- [CLI](#cli)
+- [Generated Project](#generated-project)
+- [Blink Example](#blink-example)
+- [Regeneration Workflow](#regeneration-workflow)
+- [Validation](#validation)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Why
+
+STM32CubeMX is still one of the fastest ways to describe pins, clocks, and peripherals for STM32 boards. MicroZig is a strong Zig firmware foundation, but hand-porting CubeMX configuration into Zig is repetitive and easy to get wrong.
+
+`ioc2microzig` bridges that gap:
+
+- keep `.ioc` as a reviewable hardware configuration file;
+- generate a MicroZig project with `build.zig` and `build.zig.zon`;
+- convert supported STM32 initialization into Zig;
+- preserve unsupported details as structured data instead of dropping them;
+- regenerate safely while keeping user-owned firmware code.
+
+## Features
+
+- Parses STM32CubeMX `.ioc` files into typed Python models.
+- Generates MicroZig project files, source layout, and local MicroZig dependency metadata.
+- Emits stable aliases in `board.zig` for pins and peripherals.
+- Preserves raw CubeMX data in `cubemx.zig` and `cubemx.ioc.json`.
+- Generates family-specific `board_init.zig` through pluggable backends.
+- Preserves user code across regeneration with CubeMX-style `USER CODE BEGIN/END` markers.
+- Provides backend modes for HAL-level, register-level, `hal.pins`, and metadata-only output.
+
+## Status
+
+`ioc2microzig` is alpha software. The STM32F103C8 / Blue Pill `PC13` blink path has been tested on hardware, but generated initialization should still be reviewed before flashing real devices.
+
+| MCU family | Default backend | Current coverage |
+| --- | --- | --- |
+| STM32F1 | `hal` | RCC, GPIO, TIM counter/PWM, USART/UART, I2C, SPI, ADC aliases and analog GPIO setup. |
+| STM32F4/F40x/F41x/F42x/F43x | `registers` | GPIO clocks, MODER, and AFR register writes. RCC/TIM/UART details are preserved as TODOs and CubeMX summaries. |
+| Other STM32 families | `pins` | Attempts `hal.pins.GlobalConfiguration` and basic UART v3 setup. Unsupported details are preserved as TODOs. |
+
+The generator intentionally keeps uncertain or unsupported configuration visible in generated comments, `cubemx.zig`, and `cubemx.ioc.json`.
+
+## Install
+
+Requirements:
+
+- Python 3.10 or newer;
+- a local MicroZig checkout for generated projects;
+- the Zig version expected by that MicroZig checkout;
+- STM32CubeMX only if you want to edit the source `.ioc` file.
+
+Install from this repository:
 
 ```sh
 python -m pip install -e .
 ```
 
-如果只想直接运行源码，也可以安装依赖后使用 `python ioc2microzig.py`：
+For source-only usage:
 
 ```sh
 python -m pip install -r requirements.txt
+python ioc2microzig.py --help
 ```
 
-## 基本用法
+## Quick Start
+
+Generate a project from an `.ioc` file:
 
 ```sh
-ioc2microzig MotorTest.ioc --force
-```
-
-源码方式：
-
-```sh
-python ioc2microzig.py MotorTest.ioc --force
-```
-
-默认输出目录来自 CubeMX 项目名，例如 `MotorTest` 会生成到：
-
-```text
-motor-test-microzig
-```
-
-指定输出目录：
-
-```sh
-python ioc2microzig.py MotorTest.ioc -o my-board --force
-```
-
-## 生成后端
-
-`--gpio-api` 现在使用更直观的后端名：
-
-- `auto`：自动选择合适后端，默认值。
-- `data`：只生成 CubeMX 数据、别名和 stub，不做真实硬件初始化。
-- `hal`：使用 MicroZig 高层 HAL API，例如 `rcc.apply()`、`gpio.Pin`、`GPTimer`。
-- `registers`：直接写 `microzig.chip.peripherals` 寄存器，适合没有完整 HAL 的 chip target。
-- `pins`：使用 `hal.pins.GlobalConfiguration`。
-
-兼容旧名字：`manifest/comments -> data`，`f1-runtime -> hal`，`f4-basic -> registers`，`pins-v2 -> pins`。
-
-## 当前覆盖
-
-- STM32F1：`auto -> hal`
-  - RCC：从 CubeMX RCC 字段生成 `rcc.apply(...)`
-  - GPIO：生成输入、输出、复用输出、I2C 开漏等配置
-  - TIM PWM：生成 `GPTimer.init(.TIMx).into_pwm_mode()`、周期、预分频、通道启用
-  - USART/UART：生成基础 `apply_runtime(...)`
-
-- STM32F4/F40x/F41x/F42x/F43x：`auto -> registers`
-  - GPIO：直接写 RCC GPIO 时钟、MODER、AFR
-  - RCC/TIM/UART：目前保留 TODO 和 CubeMX 摘要，后续可扩展
-
-- 其他系列：`auto -> pins`
-  - GPIO：优先生成 `hal.pins.GlobalConfiguration`
-  - UART：尝试生成 UART v3 初始化
-  - 不支持项保留 TODO
-
-## 代码结构
-
-```text
-ioc2microzig.py
-requirements.txt
-ioc2microzig/
-  backends/         # 芯片/系列后端、后端注册、模板
-    board_init.py   # 根据 --gpio-api / auto 分发到具体 family
-    common.py       # 后端共享的小工具
-    registry.py     # 后端注册、别名、auto 选择逻辑
-    families/
-      data.py
-      generic_pins.py
-      stm32f1.py
-      stm32f4.py
-    templates/
-      data/board_init.zig.j2
-      generic/pins_board_init.zig.j2
-      stm32f1/board_init.zig.j2
-      stm32f4/board_init.zig.j2
-  cli.py            # 命令行参数
-  parser.py         # 解析 .ioc
-  models.py         # 数据模型
-  render.py         # 生成通用项目文件；初始化后端不放这里
-  templating.py     # Jinja2 模板加载
-  user_code.py      # USER CODE 区域提取和重新生成合并
-```
-
-## 继续开发：新增芯片适配
-
-建议按“后端 + 模板”的方式扩展，不要继续在 Python 里拼大段 Zig 字符串。
-
-### 1. 判断用哪个层级
-
-先看 MicroZig 对目标芯片暴露了什么：
-
-```sh
-rg "pub const .* = @import|pub fn apply|GlobalConfiguration|Uart|GPTimer" D:\ioc2microzig\microzig\port\stmicro\stm32\src\hals
-```
-
-选择原则：
-
-- 有稳定 `microzig.hal` 且 API 足够：用 `hal`
-- 没有 HAL，但 `microzig.chip.peripherals` 可用：用 `registers`
-- 有 `hal.pins.GlobalConfiguration`：用 `pins`
-- 不确定或只想保存信息：用 `data`
-
-### 2. 新增或修改模板
-
-模板放在后端目录里：
-
-```text
-ioc2microzig/backends/templates/
-```
-
-例如新增 G0 寄存器后端：
-
-```text
-ioc2microzig/backends/templates/stm32g0/board_init.zig.j2
-```
-
-模板负责输出 Zig。Python family 文件只准备结构化变量，不要拼整行 Zig 代码，例如：
-
-- `pins`
-- `gpio_ports`
-- `peripheral_clocks`
-- `timers`
-- `pwm_outputs`
-- `uarts`
-- `rcc_comments`
-
-### 3. 在 `backends/registry.py` 注册后端
-
-增加一项：
-
-```python
-BACKENDS["g0-registers"] = InitBackend(
-    name="g0-registers",
-    description="STM32G0 register-level init",
-    template="stm32g0/board_init.zig.j2",
-)
-```
-
-如果要让 CLI 直接可选，也把名字加入 `CLI_BACKEND_CHOICES`。
-
-如果只是 `auto` 内部使用，也要在 `select_auto_backend()` 里加规则：
-
-```python
-if chip.startswith("STM32G0"):
-    return "g0-registers"
-```
-
-### 4. 在 `backends/families/` 增加 family 文件
-
-新增文件：
-
-```text
-ioc2microzig/backends/families/stm32g0.py
-```
-
-模式参考 `stm32f1.py` / `stm32f4.py`：Python 只做 `.ioc` 到上下文的转换，最后调用模板。
-
-```python
-def render(cfg, pins) -> str:
-    return render_template(
-        BACKENDS["g0-registers"].template,
-        pins=[...],
-        timers=[...],
-        uarts=[...],
-        rcc_comments=...,
-    )
-```
-
-然后在 `backends/board_init.py` 里分发：
-
-```python
-if gpio_api == "g0-registers":
-    return stm32g0.render(cfg, pins)
-```
-
-### 5. 尽量转换哪些内容
-
-按优先级做：
-
-1. RCC：系统时钟源、PLL、AHB/APB 分频、外设时钟 enable
-2. GPIO：input/output/analog/alternate/open-drain/pull/speed
-3. TIM PWM：prescaler、period、channel、polarity、enable
-4. UART/USART：TX/RX 引脚、baud、word length、stop bits、parity
-5. SPI/I2C/ADC/DMA/NVIC：先生成可编译初始化，再逐步补完整参数
-
-无法确定的配置不要丢掉，生成 TODO，并保留 `cubemx.zig` / `cubemx.ioc.json` 中的原始信息。
-
-### 6. 验证
-
-Python 语法：
-
-```sh
-python -m compileall ioc2microzig
-```
-
-生成当前测试项目：
-
-```sh
-python ioc2microzig.py MotorTest.ioc --force
-cd motor-test-microzig
+ioc2microzig path/to/Board.ioc -o board-microzig --force --copy-ioc
+cd board-microzig
 zig build
 ```
 
-强制指定后端测试：
+Or run without installing the console entry point:
 
 ```sh
-python ioc2microzig.py MotorTest.ioc -o test-data --gpio-api data --force
-python ioc2microzig.py MotorTest.ioc -o test-hal --gpio-api hal --force
+python ioc2microzig.py path/to/Board.ioc -o board-microzig --force --copy-ioc
 ```
 
-临时测试其他芯片 target：
+By default, the output directory is derived from the CubeMX project name. For example, `MotorTest.ioc` generates `motor-test-microzig`.
 
-```sh
-python ioc2microzig.py MotorTest.ioc ^
-  -o D:\tmp\motor-f407 ^
-  --target stm32.chips.STM32F407VE ^
-  --gpio-api registers ^
-  --microzig-path ../../ioc2microzig/microzig ^
-  --force
+## CLI
+
+```text
+usage: ioc2microzig [-h] [-o OUT] [--include INCLUDE] [--target TARGET]
+                    [--microzig-path MICROZIG_PATH]
+                    [--gpio-api {auto,data,hal,registers,pins,...}]
+                    [--force] [--summary-only] [--copy-ioc]
+                    ioc
 ```
 
-然后：
+| Option | Description |
+| --- | --- |
+| `ioc` | Path to the STM32CubeMX `.ioc` file. |
+| `-o, --out` | Output project directory. Defaults to `<project-name>-microzig`. |
+| `--include` | Comma-separated selection such as `all`, `gpio,uart,tim`, or `USART1`. |
+| `--target` | Override the MicroZig target expression, for example `stm32.chips.STM32F103C8`. |
+| `--microzig-path` | Path written into `build.zig.zon` for the local MicroZig dependency. |
+| `--gpio-api` | Initialization backend. Defaults to `auto`. |
+| `--force` | Overwrite generated files in an existing output directory. |
+| `--summary-only` | Parse and print a summary without writing files. |
+| `--copy-ioc` | Copy the source `.ioc` into the generated project. |
 
-```sh
-cd D:\tmp\motor-f407
-zig build
+Backend names:
+
+| Backend | Purpose |
+| --- | --- |
+| `auto` | Selects the best backend for the detected MCU family. |
+| `data` | Metadata-only output with aliases and stubs; no hardware initialization. |
+| `hal` | Uses MicroZig HAL APIs such as `rcc.apply()`, `gpio.Pin`, and `GPTimer`. |
+| `registers` | Writes `microzig.chip.peripherals` registers directly. |
+| `pins` | Uses `hal.pins.GlobalConfiguration` when the target exposes it. |
+
+Legacy aliases are still accepted: `manifest/comments -> data`, `f1-runtime -> hal`, `f4-basic -> registers`, `pins-v2 -> pins`.
+
+## Generated Project
+
+```text
+board-microzig/
+  build.zig
+  build.zig.zon
+  cubemx.ioc.json
+  src/
+    main.zig
+    app.zig
+    board.zig
+    board_init.zig
+    cubemx.zig
+    peripherals.zig
+    pin_manifest.zig
 ```
 
-## 重新生成时保留用户代码
+Important files:
 
-生成器会在 `src/app.zig`、`src/board_init.zig`、`src/peripherals.zig` 里输出 CubeMX 风格的用户代码区：
+| File | Role |
+| --- | --- |
+| `src/main.zig` | Calls `board_init.init()` and then `app.run()`. |
+| `src/app.zig` | Application entry point. This is where most firmware logic starts. |
+| `src/board_init.zig` | Generated board-level initialization for the selected backend. |
+| `src/board.zig` | Stable aliases for pins, peripherals, RCC, DMA, and NVIC metadata. |
+| `src/cubemx.zig` | Typed tables generated from the selected `.ioc` content. |
+| `src/peripherals.zig` | One extension stub per discovered CubeMX component/peripheral. |
+| `cubemx.ioc.json` | JSON snapshot of parsed CubeMX configuration. |
+
+The generated `main.zig` is intentionally small:
 
 ```zig
-// USER CODE BEGIN app.run.loop
-// USER CODE END app.run.loop
+try board_init.init();
+try app.run();
 ```
 
-重新执行 `python ioc2microzig.py MotorTest.ioc --force` 时，只有这些 `BEGIN/END` 中间的内容会被保留。标记外面的代码属于生成器管理，下一次生成会被覆盖。
+## Blink Example
 
-常用位置：
-
-- `src/app.zig`：写业务逻辑，例如主循环、状态机、控制算法。
-- `src/board_init.zig`：补充当前后端还没完全转换的初始化，例如特殊 RCC、GPIO、TIM、UART 参数。
-- `src/peripherals.zig`：按外设补初始化，例如 `peripherals.initTim2`、`peripherals.initUsart1`。
-
-不要改动 `USER CODE BEGIN ...` 和 `USER CODE END ...` 这两行本身；区域名必须保持一致，生成器才能把旧内容合并回新文件。
-
-## 从生成代码到点灯
-
-下面用最常见的 STM32F103C8 / Blue Pill 举例，让板载 LED 闪烁起来。很多 Blue Pill 板子的 LED 接在 `PC13`。如果你的板子不是 `PC13`，看本节最后的“换成其他引脚”。
-
-### 1. 在 CubeMX 里配置 LED 引脚
-
-如果你的 `.ioc` 还没有 LED 引脚，先在 STM32CubeMX 里做这几步：
-
-1. 选择 `PC13`。
-2. 设置为 `GPIO_Output`。
-3. 可选：把 User Label 设置成 `led`。
-4. 保存 `.ioc`。
-
-如果你用的板子 LED 在 `PA5`、`PB0` 等其他引脚，就配置对应引脚为 `GPIO_Output`。
-
-### 2. 生成 MicroZig 项目
-
-在 `D:\ioc2microzig` 下执行：
-
-```sh
-python ioc2microzig.py MotorTest.ioc --force
-cd motor-test-microzig
-```
-
-先确认生成项目能编译：
-
-```sh
-zig build
-```
-
-### 3. 修改 `src/app.zig`
-
-不要整文件替换，只把代码写进 `USER CODE` 区域。生成后的 `src/app.zig` 大致如下，把点灯代码加到对应位置：
+For a common STM32F103C8 / Blue Pill board, configure `PC13` as `GPIO_Output` in STM32CubeMX and regenerate the project. The STM32F1 backend initializes the GPIO from `.ioc`, so the application only needs a time source and a loop:
 
 ```zig
 const board = @import("board.zig");
+const board_init = @import("board_init.zig");
 // USER CODE BEGIN app.imports
 const microzig = @import("microzig");
 // USER CODE END app.imports
 
 // USER CODE BEGIN app.decls
-const stm32 = microzig.hal;
-const rcc = stm32.rcc;
-const gpio = stm32.gpio;
-const time = stm32.time;
-
-const led = gpio.Pin.from_port(.C, 13);
+const time = microzig.hal.time;
+const led = board_init.pins.pc13_gpio_output;
 // USER CODE END app.decls
 
 pub fn run() !void {
-    _ = board.pins; // 这行是生成器给的提示，保留或删除都可以。
+    _ = board.pins;
+    _ = board_init.pins;
+    _ = board_init.pwm;
     // USER CODE BEGIN app.run.setup
-    rcc.enable_clock(.GPIOC);
     time.init_timer(.TIM3);
-
-    led.set_output_mode(.general_purpose_push_pull, .max_2MHz);
     // USER CODE END app.run.setup
 
     while (true) {
@@ -326,65 +216,79 @@ pub fn run() !void {
 }
 ```
 
-这段代码做了四件事：
+If you give the pin a CubeMX User Label, use the generated alias from `src/board_init.zig`. Many Blue Pill boards wire the `PC13` LED as active-low, so the visible on/off state may be inverted.
 
-- 打开 `GPIOC` 时钟。
-- 用 `TIM3` 初始化 MicroZig 的毫秒延时。
-- 把 `PC13` 配成推挽输出。
-- 每 500 ms 翻转一次 LED。
-
-注意：`src/main.zig` 会先调用生成的 `board_init.init()`，再调用 `app.run()`。所以 CubeMX 里已经配置的 RCC/GPIO/TIM/PWM 初始化仍然会先执行；这里的代码只是一个最小点灯例子。以后重新生成项目时，上面写在 `USER CODE` 区域里的代码会被保留。
-
-### 4. 编译
+Build and flash:
 
 ```sh
 zig build
+zig objcopy -O binary zig-out/firmware/<name>.elf zig-out/firmware/<name>.bin
+st-flash write zig-out/firmware/<name>.bin 0x08000000
 ```
 
-固件输出：
+You can also flash ELF/BIN artifacts with STM32CubeProgrammer, OpenOCD, or probe-rs.
 
-```text
-zig-out\firmware\motor_test.elf
-```
+## Regeneration Workflow
 
-### 5. 生成 BIN 并烧录
-
-如果你的烧录工具支持 ELF，可以直接烧录 `motor_test.elf`。如果需要 BIN：
-
-```sh
-zig objcopy -O binary zig-out\firmware\motor_test.elf zig-out\firmware\motor_test.bin
-```
-
-使用 ST-Link 和 `st-flash` 时通常是：
-
-```sh
-st-flash write zig-out\firmware\motor_test.bin 0x08000000
-```
-
-也可以用 STM32CubeProgrammer、OpenOCD 或 probe-rs 烧录 ELF/BIN。
-
-### 换成其他引脚
-
-如果 LED 在 `PA5`，改这两处：
+Generated files use CubeMX-style user regions:
 
 ```zig
-const led = gpio.Pin.from_port(.A, 5);
-
-pub fn run() !void {
-    rcc.enable_clock(.GPIOA);
-    // 其他代码不变
-}
+// USER CODE BEGIN app.run.loop
+// USER CODE END app.run.loop
 ```
 
-如果 LED 在 `PB0`：
+When you regenerate with `--force`, code inside matching regions is preserved in:
 
-```zig
-const led = gpio.Pin.from_port(.B, 0);
+- `src/app.zig`;
+- `src/board_init.zig`;
+- `src/peripherals.zig`.
 
-pub fn run() !void {
-    rcc.enable_clock(.GPIOB);
-    // 其他代码不变
-}
+Code outside those regions belongs to the generator and may be replaced. Do not rename the `USER CODE BEGIN/END` markers unless you also update the generator.
+
+## Validation
+
+Run repository checks:
+
+```sh
+python -m unittest discover -s tests
+python -m compileall ioc2microzig
 ```
 
-端口字母和引脚号要和 CubeMX 里设置的 GPIO 输出引脚一致。
+Generate the STM32F1 fixture:
+
+```sh
+python ioc2microzig.py tests/fixtures/stm32f1_complex.ioc -o stm32f1-complex-microzig --force --copy-ioc
+zig build --build-file stm32f1-complex-microzig/build.zig
+```
+
+MicroZig builds may print `run exe regz (chips) stderr` while generating register data. That line is a build step label, not an error by itself. Treat the build as failed only when Zig exits non-zero or reports a terminating `error:`.
+
+## Roadmap
+
+- Broaden STM32F1 peripheral coverage where MicroZig HAL support is available.
+- Add more register-level backends for STM32 families without complete HAL APIs.
+- Improve DMA/NVIC generation beyond metadata preservation.
+- Add generated debug configuration templates for common ST-Link/OpenOCD/probe-rs workflows.
+- Grow fixture coverage with real `.ioc` files from more boards and MCU families.
+
+## Contributing
+
+Contributions are welcome, especially:
+
+- new `.ioc` fixtures for real boards;
+- backend fixes for specific STM32 families;
+- MicroZig API compatibility updates;
+- tests that lock down generated Zig output.
+
+Before opening a pull request, run:
+
+```sh
+python -m unittest discover -s tests
+python -m compileall ioc2microzig
+```
+
+For new chip support, prefer adding a family context builder under `ioc2microzig/backends/families/` plus a Jinja2 template under `ioc2microzig/backends/templates/`. Keep Python responsible for structured data and templates responsible for Zig output.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
