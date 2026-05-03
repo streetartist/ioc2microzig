@@ -11,6 +11,9 @@ pub fn init() !void {
     try initClocks();
     initGpio();
     initTimers();
+    initSpis();
+    try initI2cs();
+    initAdcs();
     try initUarts();
     try generated.initAll();
     // USER CODE BEGIN board_init.init
@@ -29,15 +32,35 @@ pub const pins = struct {
 {% endfor %}
 };
 
-{% for timer in timers %}
+{% if pwm_timers or counter_timers %}
+{% for timer in pwm_timers %}
 const {{ timer.alias }} = GPTimer.init(.{{ timer.instance }}).into_pwm_mode();
+{% endfor %}
+{% for timer in counter_timers %}
+const {{ timer.alias }} = GPTimer.init(.{{ timer.instance }}).into_counter_mode();
+{% endfor %}
 {% else %}
 // No generated timer aliases.
-{% endfor %}
+{% endif %}
 {% for uart in uarts %}
 const {{ uart.alias }} = stm32.uart.UART.init(.{{ uart.instance }});
 {% else %}
 // No generated UART aliases.
+{% endfor %}
+{% for i2c in i2cs %}
+pub const {{ i2c.alias }} = stm32.i2c.I2C.init(.{{ i2c.instance }});
+{% else %}
+// No generated I2C aliases.
+{% endfor %}
+{% for spi in spis %}
+pub const {{ spi.alias }} = stm32.spi.SPI.init(.{{ spi.instance }});
+{% else %}
+// No generated SPI aliases.
+{% endfor %}
+{% for adc in adcs %}
+pub const {{ adc.alias }} = stm32.adc.ADC.init(.{{ adc.instance }});
+{% else %}
+// No generated ADC aliases.
 {% endfor %}
 
 pub const pwm = struct {
@@ -111,7 +134,7 @@ fn initGpio() void {
 
 fn initTimers() void {
     // STM32F1 MicroZig timer setup generated from CubeMX TIM components.
-{% for timer in timers %}
+{% for timer in pwm_timers %}
     {{ timer.alias }}.configure(.{
         .prescaler = {{ timer.prescaler }},
         .auto_reload = {{ timer.period }},
@@ -119,21 +142,90 @@ fn initTimers() void {
     });
 {% for channel in timer.channels %}
     {{ timer.alias }}.configure_channel({{ channel.index }}, .{ .fast_mode = true });
+    {{ timer.alias }}.set_duty({{ channel.index }}, {{ channel.pulse }});
     {{ timer.alias }}.set_channel({{ channel.index }}, true);
 {% endfor %}
     {{ timer.alias }}.force_update();
+{% endfor %}
+{% for timer in counter_timers %}
+    {{ timer.alias }}.configure(.{
+        .prescaler = {{ timer.prescaler }},
+        .auto_reload = {{ timer.period }},
+        .counter_mode = .{ .up = {} },
+    });
 {% else %}
+{% if not pwm_timers %}
     // No timer setup inferred.
+{% endif %}
 {% endfor %}
     // USER CODE BEGIN board_init.initTimers
     // USER CODE END board_init.initTimers
 }
 
+fn initSpis() void {
+    // STM32F1 MicroZig SPI setup generated from CubeMX SPI components.
+{% for spi in spis %}
+{% for comment in spi.comments %}
+    // CubeMX {{ spi.instance }}: {{ comment }}
+{% endfor %}
+    {{ spi.alias }}.apply(.{
+{% for field in spi.fields %}
+        .{{ field.name }} = .{{ field.value }},
+{% endfor %}
+    });
+{% else %}
+    // No SPI setup inferred.
+{% endfor %}
+    // USER CODE BEGIN board_init.initSpis
+    // USER CODE END board_init.initSpis
+}
+
+fn initI2cs() !void {
+    // STM32F1 MicroZig I2C setup generated from CubeMX I2C components.
+{% for i2c in i2cs %}
+    try {{ i2c.alias }}.runtime_apply(.{
+        .pclk = rcc.get_clock(.{{ i2c.instance }}),
+        .speed = {{ i2c.speed }},
+        .mode = .{{ i2c.mode }},
+    });
+{% else %}
+    // No I2C setup inferred.
+{% endfor %}
+    // USER CODE BEGIN board_init.initI2cs
+    // USER CODE END board_init.initI2cs
+}
+
+fn initAdcs() void {
+    // STM32F1 ADC aliases and analog GPIO setup are generated here.
+    // ADC enable/calibration uses microzig.hal.time.sleep_us(); initialize a
+    // time source first, then call <adc>.enable() from application USER CODE.
+{% for adc in adcs %}
+    _ = {{ adc.alias }}; // {{ adc.instance }}
+{% if adc.channels %}
+    // CubeMX {{ adc.instance }} channels: {{ adc.channels }}
+{% endif %}
+{% else %}
+    // No ADC setup inferred.
+{% endfor %}
+{% for item in unsupported %}
+    // TODO {{ item.name }}: {{ item.reason }}
+{% endfor %}
+    // USER CODE BEGIN board_init.initAdcs
+    // USER CODE END board_init.initAdcs
+}
+
 fn initUarts() !void {
     // STM32F1 MicroZig UART setup generated from CubeMX USART/UART components.
 {% for uart in uarts %}
+{% for comment in uart.comments %}
+    // {{ comment }}
+{% endfor %}
     try {{ uart.alias }}.apply_runtime(.{
         .clock_speed = rcc.get_clock(.{{ uart.instance }}),
+        .baud_rate = {{ uart.baud_rate }},
+        .stop_bits = .{{ uart.stop_bits }},
+        .parity = .{{ uart.parity }},
+        .flow_control = .{{ uart.flow_control }},
     });
 {% else %}
     // No UART setup inferred.

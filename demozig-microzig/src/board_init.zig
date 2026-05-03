@@ -11,6 +11,9 @@ pub fn init() !void {
     try initClocks();
     initGpio();
     initTimers();
+    initSpis();
+    try initI2cs();
+    initAdcs();
     try initUarts();
     try generated.initAll();
     // USER CODE BEGIN board_init.init
@@ -27,6 +30,9 @@ pub const pins = struct {
 
 // No generated timer aliases.
 // No generated UART aliases.
+// No generated I2C aliases.
+// No generated SPI aliases.
+// No generated ADC aliases.
 
 pub const pwm = struct {
     // No generated PWM outputs.
@@ -72,6 +78,29 @@ fn initTimers() void {
     // No timer setup inferred.
     // USER CODE BEGIN board_init.initTimers
     // USER CODE END board_init.initTimers
+}
+
+fn initSpis() void {
+    // STM32F1 MicroZig SPI setup generated from CubeMX SPI components.
+    // No SPI setup inferred.
+    // USER CODE BEGIN board_init.initSpis
+    // USER CODE END board_init.initSpis
+}
+
+fn initI2cs() !void {
+    // STM32F1 MicroZig I2C setup generated from CubeMX I2C components.
+    // No I2C setup inferred.
+    // USER CODE BEGIN board_init.initI2cs
+    // USER CODE END board_init.initI2cs
+}
+
+fn initAdcs() void {
+    // STM32F1 ADC aliases and analog GPIO setup are generated here.
+    // ADC enable/calibration uses microzig.hal.time.sleep_us(); initialize a
+    // time source first, then call <adc>.enable() from application USER CODE.
+    // No ADC setup inferred.
+    // USER CODE BEGIN board_init.initAdcs
+    // USER CODE END board_init.initAdcs
 }
 
 fn initUarts() !void {
