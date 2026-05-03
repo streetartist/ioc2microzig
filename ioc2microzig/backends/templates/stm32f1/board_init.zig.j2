@@ -100,6 +100,12 @@ fn initClocks() !void {
 {% if enable_afio %}
     rcc.enable_clock(.AFIO);
 {% endif %}
+{% if enable_pwr %}
+    rcc.enable_clock(.PWR);
+{% endif %}
+{% if swj_remap %}
+    gpio.apply_remap(.{ .SWJ = .{{ swj_remap }} });
+{% endif %}
 {% for peripheral in peripheral_clocks %}
     rcc.enable_clock(.{{ peripheral }});
 {% endfor %}

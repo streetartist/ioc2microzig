@@ -99,7 +99,7 @@ class Stm32F1BackendTests(unittest.TestCase):
             package="LQFP48",
             ip_names=[],
             pins=pins,
-            components=[],
+            components=[component("SYS", {})],
             rcc={},
             nvic=[],
             nvic_raw={},
@@ -112,8 +112,10 @@ class Stm32F1BackendTests(unittest.TestCase):
         self.assertIn("rcc.enable_clock(.GPIOA);", output)
         self.assertIn("rcc.enable_clock(.GPIOC);", output)
         self.assertIn("rcc.enable_clock(.GPIOD);", output)
+        self.assertIn("rcc.enable_clock(.PWR);", output)
         self.assertIn("pub const pc13_gpio_output = gpio.Pin.from_port(.C, 13);", output)
         self.assertIn("pins.pc13_gpio_output.set_output_mode(.general_purpose_push_pull, .max_2MHz);", output)
+        self.assertIn("gpio.apply_remap(.{ .SWJ = .Only_SWDP });", output)
         self.assertNotIn("pa13_sys_jtms_swdio = gpio.Pin", output)
         self.assertNotIn("pd0_rcc_osc_in = gpio.Pin", output)
 
@@ -181,9 +183,48 @@ class Stm32F1BackendTests(unittest.TestCase):
         self.assertIn(".phase = .SecondEdge,", output)
         self.assertIn(".polarity = .IdleHigh,", output)
         self.assertIn(".data_size = .Bits16,", output)
+        self.assertIn(".chip_select = .GPIO,", output)
         self.assertIn(".prescaler = .Div8,", output)
         self.assertIn("tim2_pwm.set_duty(1, 250);", output)
         self.assertIn("try usart1.apply_runtime(.{", output)
+
+    def test_spi_missing_cubemx_defaults_are_emitted(self):
+        cfg = IocConfig(
+            path=Path("demo.ioc"),
+            raw=OrderedDict(),
+            entries=[],
+            project_name="demo",
+            mcu_name="STM32F103C8Tx",
+            mcu_cpn="STM32F103C8T6",
+            mcu_family="STM32F1",
+            package="LQFP48",
+            ip_names=[],
+            pins=[
+                PinConfig(0, "PA5", "PA5", False, "A", 5, signal="SPI1_SCK"),
+                PinConfig(1, "PA7", "PA7", False, "A", 7, signal="SPI1_MOSI"),
+            ],
+            components=[
+                component("SPI1", {
+                    "BaudRatePrescaler": "SPI_BAUDRATEPRESCALER_16",
+                    "Direction": "SPI_DIRECTION_2LINES",
+                    "Mode": "SPI_MODE_MASTER",
+                }),
+            ],
+            rcc={},
+            nvic=[],
+            nvic_raw={},
+            dma=[],
+            dma_raw={},
+        )
+
+        output = render(cfg, cfg.pins)
+
+        self.assertIn(".phase = .FirstEdge,", output)
+        self.assertIn(".polarity = .IdleLow,", output)
+        self.assertIn(".data_size = .Bits8,", output)
+        self.assertIn(".chip_select = .GPIO,", output)
+        self.assertIn(".prescaler = .Div16,", output)
+        self.assertIn(".frame_format = .MSBFirst,", output)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,12 @@
+#MicroXplorer Configuration settings - do not modify
+ProjectManager.ProjectName=demo
+Mcu.Name=STM32F103C(8-B)Tx
+Mcu.CPN=STM32F103C8T6
+Mcu.Family=STM32F1
+Mcu.Pin0=PA1
+Mcu.PinsNb=1
+PA1.GPIOParameters=GPIO_Speed,PinState,GPIO_Label
+PA1.GPIO_Label=EPD_RST
+PA1.GPIO_Speed=GPIO_SPEED_FREQ_HIGH
+PA1.PinState=GPIO_PIN_SET
+PA1.Signal=GPIO_Output

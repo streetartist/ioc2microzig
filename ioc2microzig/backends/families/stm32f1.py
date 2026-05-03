@@ -24,6 +24,8 @@ def render(cfg: IocConfig, pins: Sequence[PinConfig]) -> str:
         pins=[pin_context(alias, p) for alias, p in zip(aliases, physical)],
         gpio_ports=ports,
         enable_afio=any(pin_uses_alternate_function(p) for p in physical),
+        enable_pwr=has_component(cfg, "SYS"),
+        swj_remap=swj_remap(cfg.pins),
         peripheral_clocks=periphs,
         rcc=rcc_context(cfg),
         pwm_timers=pwm_timers,
@@ -134,6 +136,14 @@ def pin_uses_analog(p: PinConfig) -> bool:
     sig = p.signal.upper()
     mode = p.gpio_mode.upper()
     return "ANALOG" in mode or sig.startswith("ADC") or "_ADC" in sig or sig.startswith("DAC") or "_DAC" in sig
+
+
+def swj_remap(pins: Sequence[PinConfig]) -> str:
+    for pin in pins:
+        haystack = f"{pin.signal} {pin.gpio_mode}".upper()
+        if "SYS_JTMS-SWDIO" in haystack and "SERIAL_WIRE" in haystack:
+            return "Only_SWDP"
+    return ""
 
 
 def peripheral_clock_name(p: PinConfig) -> str:
@@ -291,6 +301,10 @@ def unsupported_runtime(cfg: IocConfig) -> list[dict[str, str]]:
     return unsupported
 
 
+def has_component(cfg: IocConfig, name: str) -> bool:
+    return any(comp.name.upper() == name.upper() for comp in cfg.components)
+
+
 def first_config(config: Mapping[str, str], names: Sequence[str]) -> str:
     for name in names:
         value = config.get(name, "")
@@ -357,18 +371,15 @@ def spi_comments(config: Mapping[str, str]) -> list[str]:
 
 def spi_fields(config: Mapping[str, str]) -> list[dict[str, str]]:
     fields: list[dict[str, str]] = []
-    if config.get("CLKPhase", ""):
-        fields.append({"name": "phase", "value": "SecondEdge" if "2EDGE" in config["CLKPhase"].upper() else "FirstEdge"})
-    if config.get("CLKPolarity", ""):
-        fields.append({"name": "polarity", "value": "IdleHigh" if "HIGH" in config["CLKPolarity"].upper() else "IdleLow"})
-    if config.get("DataSize", ""):
-        fields.append({"name": "data_size", "value": "Bits16" if "16" in config["DataSize"].upper() else "Bits8"})
+    fields.append({"name": "phase", "value": "SecondEdge" if "2EDGE" in config.get("CLKPhase", "").upper() else "FirstEdge"})
+    fields.append({"name": "polarity", "value": "IdleHigh" if "HIGH" in config.get("CLKPolarity", "").upper() else "IdleLow"})
+    fields.append({"name": "data_size", "value": "Bits16" if "16" in config.get("DataSize", "").upper() else "Bits8"})
+    fields.append({"name": "chip_select", "value": "GPIO"})
     if config.get("BaudRatePrescaler", ""):
         match = re.search(r"_(\d+)$", config["BaudRatePrescaler"].upper())
         if match:
             fields.append({"name": "prescaler", "value": f"Div{match.group(1)}"})
-    if config.get("FirstBit", ""):
-        fields.append({"name": "frame_format", "value": "LSBFirst" if "LSB" in config["FirstBit"].upper() else "MSBFirst"})
+    fields.append({"name": "frame_format", "value": "LSBFirst" if "LSB" in config.get("FirstBit", "").upper() else "MSBFirst"})
     return fields
 
 

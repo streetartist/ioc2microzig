@@ -24,6 +24,7 @@ from .render import (
 from .user_code import merge_user_regions
 
 PRESERVE_USER_CODE = {
+    "build.zig",
     "src/app.zig",
     "src/board_init.zig",
     "src/peripherals.zig",

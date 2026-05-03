@@ -123,7 +123,7 @@ def extract_pins(raw: Mapping[str, str]) -> list[PinConfig]:
         gpio_pull = first_existing(fields, ["GPIO_PuPd", "GPIO_Pull", "GPIO_PullUpPullDown"])
         gpio_speed = first_existing(fields, ["GPIO_Speed", "GPIO_SpeedFrequency", "GPIO_Speed_FREQ"])
         gpio_output_type = first_existing(fields, ["GPIO_OType", "GPIO_OutputType"])
-        gpio_output_level = first_existing(fields, ["GPIO_OutputLevel", "GPIO_InitLevel"])
+        gpio_output_level = first_existing(fields, ["GPIO_OutputLevel", "GPIO_InitLevel", "PinState"])
         pins.append(PinConfig(
             index=len(pins),
             ioc_key=ioc_key,
@@ -256,4 +256,3 @@ def extract_dma(raw: Mapping[str, str]) -> tuple[list[DmaRequestConfig], dict[st
             config=fields,
         ))
     return requests, dict(sorted(raw_dma.items()))
-

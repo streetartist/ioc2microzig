@@ -16,6 +16,8 @@ def render_build_zig(project_name: str, target_expr: str) -> str:
     return f'''\
 const std = @import("std");
 const microzig = @import("microzig");
+// USER CODE BEGIN build.imports
+// USER CODE END build.imports
 
 const MicroBuild = microzig.MicroBuild(.{{
     .stm32 = true,
@@ -23,6 +25,8 @@ const MicroBuild = microzig.MicroBuild(.{{
 
 pub fn build(b: *std.Build) void {{
     const optimize = b.standardOptimizeOption(.{{}});
+    // USER CODE BEGIN build.options
+    // USER CODE END build.options
     const mz_dep = b.dependency("microzig", .{{}});
     const mb = MicroBuild.init(b, mz_dep) orelse return;
     const stm32 = mb.ports.stm32;
@@ -34,9 +38,15 @@ pub fn build(b: *std.Build) void {{
         .root_source_file = b.path("src/main.zig"),
     }});
 
+    // USER CODE BEGIN build.firmware
+    // USER CODE END build.firmware
+
     mb.install_firmware(fw, .{{}});
     mb.install_firmware(fw, .{{ .format = .elf }});
 }}
+
+// USER CODE BEGIN build.decls
+// USER CODE END build.decls
 '''
 
 
@@ -116,6 +126,12 @@ pub fn run() !void {{
         // USER CODE END app.run.loop
     }}
 }}
+
+// USER CODE BEGIN app.helpers
+// USER CODE END app.helpers
+
+// USER CODE BEGIN app.callbacks
+// USER CODE END app.callbacks
 '''
 
 
@@ -585,7 +601,7 @@ The default `--gpio-api auto` mode tries to convert CubeMX initialization into M
 
 ## Regeneration-safe user code
 
-`src/app.zig`, `src/board_init.zig`, and `src/peripherals.zig` contain CubeMX-style user regions:
+`build.zig`, `src/app.zig`, `src/board_init.zig`, and `src/peripherals.zig` contain CubeMX-style user regions:
 
 ```zig
 // USER CODE BEGIN app.run.loop
