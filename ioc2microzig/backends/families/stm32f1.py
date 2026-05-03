@@ -13,9 +13,10 @@ from ..registry import BACKENDS
 
 
 def render(cfg: IocConfig, pins: Sequence[PinConfig]) -> str:
-    physical = [p for p in pins if not p.is_virtual and p.port is not None and p.number is not None and p.peripheral not in {"SYS", "RCC"}]
+    all_physical = [p for p in pins if not p.is_virtual and p.port is not None and p.number is not None]
+    physical = [p for p in all_physical if p.peripheral not in {"SYS", "RCC"}]
     aliases = unique_zig_identifiers([p.zig_name_seed for p in physical])
-    ports = sorted({p.gpio_port_field for p in physical})
+    ports = sorted({p.gpio_port_field for p in all_physical})
     periphs = sorted({peripheral_clock_name(p) for p in physical if peripheral_clock_name(p)})
     for timer_name in timer_components(cfg):
         if timer_name not in periphs:
@@ -43,8 +44,9 @@ def pin_context(alias: str, p: PinConfig) -> dict[str, object]:
     if sig == "GPIO_OUTPUT" or "OUTPUT" in mode:
         setup = {
             "kind": "output",
-            "mode": "alternate_function_open_drain" if "OPEN_DRAIN" in p.gpio_output_type.upper() else "general_purpose_push_pull",
+            "mode": "general_purpose_open_drain" if pin_is_open_drain(p) else "general_purpose_push_pull",
             "speed": speed_value(p),
+            "initial": output_initial_value(p),
         }
     elif sig == "GPIO_INPUT" or "INPUT" in mode:
         if "PULLUP" in pull:
@@ -54,7 +56,7 @@ def pin_context(alias: str, p: PinConfig) -> dict[str, object]:
         else:
             setup = {"kind": "input", "mode": "floating", "pull": ""}
     elif pin_uses_alternate_function(p) and not ("RX" in sig or "MISO" in sig):
-        mode_name = "alternate_function_open_drain" if "SCL" in sig or "SDA" in sig else "alternate_function_push_pull"
+        mode_name = "alternate_function_open_drain" if pin_is_open_drain(p) or "SCL" in sig or "SDA" in sig else "alternate_function_push_pull"
         setup = {"kind": "output", "mode": mode_name, "speed": "max_50MHz"}
     elif "RX" in sig or "MISO" in sig:
         setup = {"kind": "input", "mode": "pull", "pull": "up"}
@@ -71,7 +73,26 @@ def pin_context(alias: str, p: PinConfig) -> dict[str, object]:
 
 
 def speed_value(p: PinConfig) -> str:
-    return "max_50MHz" if "HIGH" in p.gpio_speed.upper() or "50" in p.gpio_speed else "max_10MHz"
+    speed = p.gpio_speed.upper()
+    if "HIGH" in speed or "50" in speed:
+        return "max_50MHz"
+    if "MEDIUM" in speed or "10" in speed:
+        return "max_10MHz"
+    return "max_2MHz"
+
+
+def pin_is_open_drain(p: PinConfig) -> bool:
+    haystack = f"{p.gpio_output_type} {p.gpio_mode} {p.signal}".upper()
+    return "OPEN_DRAIN" in haystack or "_OD" in haystack
+
+
+def output_initial_value(p: PinConfig) -> str:
+    level = p.gpio_output_level.upper()
+    if "SET" in level or "HIGH" in level or level == "1":
+        return "1"
+    if "RESET" in level or "LOW" in level or level == "0":
+        return "0"
+    return "0"
 
 
 def rcc_context(cfg: IocConfig) -> dict[str, object]:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import zlib
 from typing import Sequence
 
 from .backends.board_init import render_board_init_zig
@@ -62,13 +63,13 @@ def render_build_zon(project_name: str, microzig_path: str) -> str:
 
 
 def package_fingerprint(name: str) -> int:
-    # Zig 0.15+ requires a package fingerprint in build.zig.zon. Keep it stable
-    # for reproducible generated output while avoiding a hard-coded template id.
+    # Zig 0.15+ requires the high 32 bits to be crc32(package name). Keep the
+    # low 32 bits stable for reproducible generated output.
     import hashlib
 
     digest = hashlib.blake2s(f"ioc2microzig:{name}".encode("utf-8"), digest_size=4).digest()
     suffix = int.from_bytes(digest, "big") or 1
-    return (0x143F5F65 << 32) | suffix
+    return ((zlib.crc32(name.encode("utf-8")) & 0xFFFFFFFF) << 32) | suffix
 
 
 def render_main_zig() -> str:

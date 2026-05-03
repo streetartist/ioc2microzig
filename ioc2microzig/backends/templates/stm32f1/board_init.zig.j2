@@ -93,6 +93,9 @@ fn initGpio() void {
     // STM32F1 MicroZig GPIO setup generated from CubeMX pins.
 {% for pin in pins %}
 {% if pin.setup.kind == "output" %}
+{% if pin.setup.initial is defined %}
+    pins.{{ pin.alias }}.put({{ pin.setup.initial }});
+{% endif %}
     pins.{{ pin.alias }}.set_output_mode(.{{ pin.setup.mode }}, .{{ pin.setup.speed }}); // {{ pin.name }}: {{ pin.signal }}
 {% elif pin.setup.kind == "input" %}
     pins.{{ pin.alias }}.set_input_mode(.{{ pin.setup.mode }});{% if pin.setup.pull %} pins.{{ pin.alias }}.set_pull(.{{ pin.setup.pull }});{% endif %} // {{ pin.name }}: {{ pin.signal }}
