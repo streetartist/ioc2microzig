@@ -49,7 +49,7 @@ STM32CubeMX is still one of the fastest ways to describe pins, clocks, and perip
 - generate a MicroZig project with `build.zig` and `build.zig.zon`;
 - convert supported STM32 initialization into Zig;
 - preserve unsupported details as structured data instead of dropping them;
-- regenerate safely while keeping user-owned firmware code.
+- regenerate safely while keeping user-owned firmware and build customization code.
 
 ## Features
 
@@ -67,7 +67,7 @@ STM32CubeMX is still one of the fastest ways to describe pins, clocks, and perip
 
 | MCU family | Default backend | Current coverage |
 | --- | --- | --- |
-| STM32F1 | `hal` | RCC, GPIO, TIM counter/PWM, USART/UART, I2C, SPI, ADC aliases and analog GPIO setup. |
+| STM32F1 | `hal` | RCC, GPIO, PWR/SWJ remap, TIM counter/PWM, USART/UART, I2C, SPI, ADC aliases and analog GPIO setup. |
 | STM32F4/F40x/F41x/F42x/F43x | `registers` | GPIO clocks, MODER, and AFR register writes. RCC/TIM/UART details are preserved as TODOs and CubeMX summaries. |
 | Other STM32 families | `pins` | Attempts `hal.pins.GlobalConfiguration` and basic UART v3 setup. Unsupported details are preserved as TODOs. |
 
@@ -239,9 +239,12 @@ Generated files use CubeMX-style user regions:
 
 When you regenerate with `--force`, code inside matching regions is preserved in:
 
+- `build.zig`;
 - `src/app.zig`;
 - `src/board_init.zig`;
 - `src/peripherals.zig`.
+
+Common application regions include `app.imports`, `app.decls`, `app.run.setup`, `app.run.loop`, `app.helpers`, and `app.callbacks`. `build.zig` also has `build.imports`, `build.options`, `build.firmware`, and `build.decls` for build-system additions such as C sources, include paths, or custom build steps.
 
 Code outside those regions belongs to the generator and may be replaced. Do not rename the `USER CODE BEGIN/END` markers unless you also update the generator.
 

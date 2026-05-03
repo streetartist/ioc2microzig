@@ -49,7 +49,7 @@ STM32CubeMX 仍然是描述 STM32 引脚、时钟和外设配置的高效工具�
 - 生成带 `build.zig` 和 `build.zig.zon` 的 MicroZig 项目；
 - 把已支持的 STM32 初始化转换成 Zig；
 - 对暂不支持或无法确定的配置保留结构化数据，而不是直接丢弃；
-- 允许反复重新生成，同时保留用户手写固件代码。
+- 允许反复重新生成，同时保留用户手写固件代码和构建配置。
 
 ## 功能亮点
 
@@ -67,7 +67,7 @@ STM32CubeMX 仍然是描述 STM32 引脚、时钟和外设配置的高效工具�
 
 | MCU 系列 | 默认后端 | 当前覆盖 |
 | --- | --- | --- |
-| STM32F1 | `hal` | RCC、GPIO、TIM counter/PWM、USART/UART、I2C、SPI、ADC 别名和 analog GPIO 配置。 |
+| STM32F1 | `hal` | RCC、GPIO、PWR/SWJ remap、TIM counter/PWM、USART/UART、I2C、SPI、ADC 别名和 analog GPIO 配置。 |
 | STM32F4/F40x/F41x/F42x/F43x | `registers` | GPIO 时钟、MODER、AFR 寄存器写入。RCC/TIM/UART 细节会保留为 TODO 和 CubeMX 摘要。 |
 | 其他 STM32 系列 | `pins` | 尝试生成 `hal.pins.GlobalConfiguration` 和基础 UART v3 初始化。不支持项保留为 TODO。 |
 
@@ -239,9 +239,12 @@ st-flash write zig-out/firmware/<name>.bin 0x08000000
 
 使用 `--force` 重新生成时，以下文件中匹配区域内的代码会被保留：
 
+- `build.zig`；
 - `src/app.zig`；
 - `src/board_init.zig`；
 - `src/peripherals.zig`。
+
+常用应用区包括 `app.imports`、`app.decls`、`app.run.setup`、`app.run.loop`、`app.helpers` 和 `app.callbacks`。`build.zig` 也提供 `build.imports`、`build.options`、`build.firmware` 和 `build.decls`，用于保留 C 源文件、include path 或自定义构建步骤。
 
 标记外面的代码属于生成器管理，可能在下一次生成时被替换。不要重命名 `USER CODE BEGIN/END` 标记，除非你同步修改生成器。
 
