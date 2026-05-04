@@ -23,6 +23,10 @@
 
 It is not a CubeMX C-to-Zig transpiler. It works from the `.ioc` source of truth.
 
+## Acknowledgements
+
+- [Linux.do](https://linux.do)
+
 ## Contents
 
 - [Why](#why)
